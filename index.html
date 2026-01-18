@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>漫画ト書き v3.5.22 (最終堅牢化版)</title>
+  <title>漫画ト書き</title>
   <style>
     :root{
       --bg:#0b0d10; --panel:#121621; --panel2:#0f1320; --text:#e8ecf3;
@@ -195,6 +195,11 @@
     }
     .freeInput{width: 22ch; max-width: 22ch; flex: 0 0 auto;}
 
+    /* 修正2: エディタ内ボタン用 */
+    .inlineBtns{
+      display:flex; gap:8px; align-items:center; flex: 0 0 auto;
+    }
+
     .split2{
       display:grid;
       grid-template-columns: minmax(280px, 0.9fr) 1.6fr;
@@ -253,7 +258,7 @@
 
   <div class="wrap">
     <header>
-      <h1>漫画ト書き <span style="font-weight:400; opacity:.6; font-size:12px; margin-left:6px;">v3.5.22 (最終堅牢化版)</span></h1>
+      <h1>漫画ト書き</h1>
       <div class="toolbar">
         <button id="btnUndo" title="元に戻す (Ctrl+Z)" disabled>↩</button>
         <button id="btnRedo" title="やり直す (Ctrl+Shift+Z)" disabled>↪</button>
@@ -284,8 +289,14 @@
                 <div class="pill" id="editorHeadPill">上段：—</div>
               </div>
               <div class="headBtns" id="headFixedBtns"></div>
+              
               <div class="freeBox">
                 <input id="headFree" class="freeInput" type="text" maxlength="20" placeholder="未登録名(最優先表示)" />
+                <div class="inlineBtns">
+                  <button type="button" id="btnUndo2" class="chipBtn" title="元に戻す (Ctrl+Z)">↩</button>
+                  <button type="button" id="btnRedo2" class="chipBtn" title="やり直す (Ctrl+Shift+Z)">↪</button>
+                  <button type="button" id="addPageBtn2" class="chipBtn" title="ページ追加">＋ページ</button>
+                </div>
               </div>
             </div>
 
@@ -598,6 +609,10 @@
   function updateUndoButtons(){
     $("btnUndo").disabled = (historyIdx <= 0);
     $("btnRedo").disabled = (historyIdx >= historyStack.length - 1);
+
+    // 修正4: エディタ側ミニボタンにも反映
+    if($("btnUndo2")) $("btnUndo2").disabled = $("btnUndo").disabled;
+    if($("btnRedo2")) $("btnRedo2").disabled = $("btnRedo").disabled;
   }
 
   function action(fn){
@@ -1146,6 +1161,11 @@
 
   $("btnUndo").addEventListener("click", undo);
   $("btnRedo").addEventListener("click", redo);
+  
+  // 修正3: エディタ上部のミニボタンを既存ボタンに接続
+  $("btnUndo2")?.addEventListener("click", () => $("btnUndo")?.click());
+  $("btnRedo2")?.addEventListener("click", () => $("btnRedo")?.click());
+  $("addPageBtn2")?.addEventListener("click", () => $("addPageBtn")?.click());
   
   window.addEventListener("keydown", (e) => {
     if(e.isComposing) return; 
