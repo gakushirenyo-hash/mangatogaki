@@ -1,0 +1,1543 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>漫画ト書き v3.5.22 (最終堅牢化版)</title>
+  <style>
+    :root{
+      --bg:#0b0d10; --panel:#121621; --panel2:#0f1320; --text:#e8ecf3;
+      --muted:#aab3c5; --line:#24304a; --accent:#7aa2ff; --danger:#ff6b6b; --success:#4ade80;
+      --shadow: 0 8px 24px rgba(0,0,0,.35);
+      --card:#0b1020; --field:#0e1220;
+      --hl: rgba(122,162,255,.22);
+      --active-border: #7aa2ff;
+    }
+    *{box-sizing:border-box}
+    html{ scroll-padding-bottom: 40vh; overscroll-behavior-y: none; }
+    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); overflow-x:hidden; overscroll-behavior-y: none;}
+    .wrap{max-width:1200px; margin:0 auto; padding:16px;}
+    
+    header{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0 12px;}
+    h1{font-size:16px; margin:0; letter-spacing:.02em;}
+    .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+    
+    button{
+      background:var(--panel); color:var(--text); border:1px solid var(--line);
+      padding:9px 12px; border-radius:12px; cursor:pointer;
+      display:flex; align-items:center; gap:6px; font-weight:500; font-size:13px;
+      transition: background .1s, border-color .1s;
+    }
+    button:hover{border-color:var(--accent)}
+    button:active{transform:translateY(1px);}
+    button:disabled{opacity:.4; cursor:not-allowed; border-color:var(--line); transform:none;}
+    button.primary{background:rgba(122,162,255,.15); border-color:var(--accent); color:#fff;}
+    button.danger:hover{border-color:var(--danger)}
+    .ghost{background:transparent}
+    .muted{color:var(--muted); font-size:12px}
+
+    .toast{
+      position:fixed; top:20px; left:50%; transform:translateX(-50%);
+      background:rgba(18,22,33,.95); border:1px solid var(--accent); border-radius:999px;
+      padding:10px 20px; box-shadow: var(--shadow); color:#fff; font-size:13px;
+      opacity:0; pointer-events:none; transition: opacity .14s ease; z-index:999;
+    }
+    .toast.show{opacity:1}
+    .toast.error{border-color:var(--danger); color:var(--danger);}
+
+    .pagesWrap{
+      border:1px solid var(--line); border-radius:18px;
+      background:linear-gradient(180deg,var(--panel),var(--panel2)); padding:12px;
+      min-height: 80vh; 
+    }
+    .pagesHeader{display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;}
+    .pagesColumn{display:flex; flex-direction:column; gap:12px; min-height: 200px; padding-bottom: 340px;}
+    .pageBlock{border:1px solid var(--line); border-radius:18px; background:var(--field); padding:10px;}
+
+    .pageTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
+    
+    .pageNum{
+      appearance:none; background:var(--card); color:inherit; border:1px solid var(--line);
+      font-weight:700; padding:6px 10px; border-radius:999px; white-space:nowrap; cursor:pointer;
+      font-family: inherit; font-size: inherit;
+      display:inline-flex; align-items:center; justify-content:center; gap:0;
+    }
+    .pageNum:hover{border-color:var(--accent);}
+    .pageNum:focus{ outline: none; }
+    .pageNum:focus-visible{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(122,162,255,.25);
+    }
+
+    .pageMemo{
+      background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:12px;
+      padding:8px 10px; outline:none; flex: 1 1 340px; min-width: 220px;
+    }
+    .pageMemo:focus{border-color:var(--accent)}
+    .pageBtns{display:flex; gap:8px; align-items:center; margin-left:auto;}
+
+    .bubbleBoard{
+      display:flex; flex-wrap: wrap;
+      flex-direction: row-reverse; /* 右から左へ */
+      gap:12px; align-content:flex-start; padding:6px 2px;
+      min-height: 90px; border-radius:14px;
+      transition: background .2s;
+    }
+    .bubbleBoard.dropTarget{background: var(--hl);}
+
+    .drop-marker {
+      width: 6px; border-radius: 3px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      margin: 0 2px; flex: 0 0 6px;
+      align-self: stretch;
+      animation: popIn 0.2s ease;
+      pointer-events: none;
+    }
+    @keyframes popIn { from{transform:scaleY(0)} to{transform:scaleY(1)} }
+
+    .bubble{
+      position: relative; 
+      border:1px solid var(--line); border-radius:16px; background:var(--card);
+      padding:8px; width: fit-content; display: inline-flex;
+      min-width: 0; min-height: 0; cursor:pointer; user-select:none; touch-action: manipulation; flex-direction:column;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .bubble::after {
+      content: attr(data-order);
+      position: absolute; top: -10px; right: 0;
+      background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+      font-size: 10px; padding: 2px 5px; border-radius: 8px; z-index: 2;
+      font-family: monospace; pointer-events: none;
+      transform: translateX(-2px);
+    }
+    .bubble:hover{border-color:var(--accent)}
+    .bubble.selected{outline:2px solid rgba(122,162,255,.35); border-color:var(--accent)}
+    .bubble.active-edit{box-shadow: 0 0 0 2px var(--accent) inset, 0 0 15px rgba(122,162,255,.2); border-color:var(--accent);}
+    .bubble.dragging{opacity:.4;}
+
+    .bubbleInner{display:flex; gap:8px; align-items:stretch; width: auto;}
+
+    .bubbleText{
+      border:1px solid var(--line); border-radius:12px; background:rgba(0,0,0,.12);
+      display:flex; justify-content:flex-end; flex: 0 0 auto; min-height: 0;
+      padding:10px 6px; overflow: hidden;
+    }
+    .bubbleText .inner{
+      writing-mode: vertical-rl; text-orientation: mixed; line-height: 1.8;
+      white-space: pre-wrap; overflow: visible; font-size:16px; color:var(--text);
+      margin-left: auto; display: block; width: fit-content; max-width: none;
+    }
+
+    .ctrlCol{width:24px; min-width:24px; display:flex; flex-direction:column; gap:6px; align-items:stretch; flex:0 0 24px;}
+    
+    .iconBtn{
+      display:flex; align-items:center; justify-content:center;
+      width:24px; height:24px; padding:0; border-radius:6px;
+      border:1px solid var(--line); background:rgba(0,0,0,.22); color:var(--text);
+      font-size:13px; line-height:1; cursor:pointer; user-select:none;
+      appearance: none; font-family: inherit;
+    }
+    .iconBtn:hover{border-color:var(--accent)}
+    .delBtn{border-color:rgba(255,107,107,.5)}
+    .delBtn:hover{border-color:var(--danger)}
+    .handle{cursor:grab; touch-action:none;}
+    .handle:active{cursor:grabbing}
+    
+    .iconBtn:focus{ outline:none; }
+    .iconBtn:focus-visible{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(122,162,255,.25);
+    }
+
+    .hint{font-size:12px; color:var(--muted); line-height:1.55; padding:10px; border:1px dashed var(--line); border-radius:14px; width:100%; pointer-events: none;}
+
+    /* エディタ部分 */
+    .editorShell{position: fixed; bottom: 0; left:0; width:100%; z-index: 30; padding: 14px; pointer-events: none;}
+    .editorBar{
+      max-width:1200px; margin:0 auto; pointer-events: auto;
+      border:1px solid var(--line); border-radius:18px;
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      box-shadow: var(--shadow); overflow:hidden;
+    }
+    .editorBody{padding:12px; display:flex; flex-direction:column; gap:10px; height: 35dvh; min-height: 240px; max-height: 380px;}
+
+    input[type="text"], textarea{
+      background:var(--field); color:var(--text); border:1px solid var(--line);
+      border-radius:12px; padding:8px 10px; outline:none; width:100%; font-size:15px;
+    }
+    input[type="text"]:focus, textarea:focus{border-color:var(--accent)}
+    textarea{resize:none; line-height:1.7; height: 100%;}
+
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .small{font-size:12px; color:var(--muted)}
+
+    .topLine{
+      display:flex; align-items:center; gap:12px; flex-wrap: nowrap;
+      overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+      border:1px solid var(--line); border-radius:16px; background:rgba(0,0,0,.10); padding:10px;
+      flex: 0 0 auto;
+    }
+    .pills{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-left: 0; flex: 0 0 auto;}
+    .pill{border:1px solid var(--line); border-radius:999px; padding:6px 10px; background:var(--field); font-size:12px; color:var(--muted); white-space:nowrap;}
+    .topLine .headBtns{margin-left: 10px; display:flex; gap:8px; flex-wrap: nowrap; align-items:center; flex: 0 0 auto;}
+    .chipBtn{
+      padding:8px 10px; border-radius:999px; border:1px solid var(--line);
+      background:var(--field); color:var(--text); cursor:pointer; font-size:13px;
+      white-space:nowrap; flex: 0 0 auto;
+    }
+    .chipBtn:hover{border-color:var(--accent)}
+    .chipBtn.active{border-color:var(--accent); box-shadow: 0 0 0 2px rgba(122,162,255,.18) inset;}
+    
+    .freeBox{
+      display:flex; gap:10px; align-items:center; flex-wrap: nowrap;
+      white-space:nowrap; flex: 0 0 auto; margin-left: 0;
+    }
+    .freeInput{width: 22ch; max-width: 22ch; flex: 0 0 auto;}
+
+    .split2{
+      display:grid;
+      grid-template-columns: minmax(280px, 0.9fr) 1.6fr;
+      gap:12px; min-height:0; flex: 1;
+    }
+    .pane{
+      border:1px solid var(--line); border-radius:16px; background:rgba(0,0,0,.10);
+      padding:10px; min-height:0; display:flex; flex-direction:column; gap:8px; height: 100%;
+    }
+    .charPaneList{overflow:auto; border:1px solid var(--line); border-radius:14px; background:rgba(0,0,0,.08); padding:8px; height: 100%;}
+    .charGrid{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start;}
+
+    .panelBackdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:50;}
+    .panelBackdrop.open{display:block;}
+    .sidePanel{
+      position:fixed; top:0; right:0; height:100%; width:min(520px, 92vw);
+      background:linear-gradient(180deg,var(--panel),var(--panel2)); border-left:1px solid var(--line);
+      box-shadow: var(--shadow); transform: translateX(102%); transition: transform .18s ease;
+      z-index:60; display:flex; flex-direction:column;
+    }
+    .sidePanel.open{transform: translateX(0);}
+    .panelHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 12px 10px; border-bottom:1px solid var(--line);}
+    .panelHeader h2{margin:0; font-size:14px; color:var(--text)}
+    .panelBody{padding:12px; overflow:auto;}
+    .section{border:1px solid var(--line); border-radius:16px; background:var(--field); padding:12px; margin-bottom:12px;}
+    
+    /* A. キャラ変更UI用 */
+    .chip{display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:999px; padding:7px 10px; background:var(--card);}
+    .chip button{padding:4px 8px; border:none; background:transparent;}
+    .exportBox{width:100%; min-height:160px;}
+
+    /* B. 統計ボード */
+    .statsGrid{display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:10px;}
+    .statCard{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center;}
+    .statVal{font-size:18px; font-weight:700; color:var(--accent); display:block;}
+    .statLabel{font-size:11px; color:var(--muted);}
+
+    /* 修正3: dragGhostの巨大化防止 */
+    .dragGhost{
+      position:fixed; z-index:9999; pointer-events:none; opacity:.92; 
+      border-radius:16px; border:1px solid rgba(122,162,255,.7); background:rgba(11,16,32,.92);
+      box-shadow: var(--shadow); overflow:hidden; min-height: 230px; min-width: 176px; padding:8px;
+      max-height: 60vh; max-width: 80vw;
+    }
+    .dragGhost .inner{
+      writing-mode: vertical-rl; text-orientation: mixed; line-height: 1.8;
+      white-space: pre-wrap; color: var(--text); font-size:16px; width: max-content; max-width:none;
+    }
+
+    @media (max-width: 860px){ .split2{grid-template-columns: 1fr;} }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast">処理完了</div>
+  <input type="file" id="fileLoader" accept=".json" style="display:none" />
+
+  <div class="wrap">
+    <header>
+      <h1>漫画ト書き <span style="font-weight:400; opacity:.6; font-size:12px; margin-left:6px;">v3.5.22 (最終堅牢化版)</span></h1>
+      <div class="toolbar">
+        <button id="btnUndo" title="元に戻す (Ctrl+Z)" disabled>↩</button>
+        <button id="btnRedo" title="やり直す (Ctrl+Shift+Z)" disabled>↪</button>
+        <span style="border-left:1px solid var(--line); height:24px; margin:0 4px;"></span>
+        <button id="openFileBtn">📂 開く</button>
+        <button id="saveFileBtn" class="primary" title="保存 (Ctrl+S)">💾 保存</button>
+        <span style="border-left:1px solid var(--line); height:24px; margin:0 4px;"></span>
+        <button id="addPageBtn">＋ ページ追加</button>
+        <button id="openPanelBtn">メニュー</button>
+      </div>
+    </header>
+
+    <section class="pagesWrap">
+      <div class="pagesHeader">
+        <div class="muted">フキダシ：縦書き / 右から配置（漫画形式） / ≡ドラッグで並び替え</div>
+        <div class="muted" style="font-size:11px">ショートカット：本文欄で Ctrl+Enter（確定＆次へ） / Ctrl+S（保存）</div>
+      </div>
+
+      <div id="pages" class="pagesColumn" aria-label="pages"></div>
+
+      <div class="editorShell">
+        <div class="editorBar">
+          <div class="editorBody">
+            <div class="topLine">
+              <div class="pills topPills">
+                <div class="pill" id="editorWhere">未選択</div>
+                <div class="pill" id="editorLineId">フキダシ：—</div>
+                <div class="pill" id="editorHeadPill">上段：—</div>
+              </div>
+              <div class="headBtns" id="headFixedBtns"></div>
+              <div class="freeBox">
+                <input id="headFree" class="freeInput" type="text" maxlength="20" placeholder="未登録名(最優先表示)" />
+              </div>
+            </div>
+
+            <div class="split2">
+              <div class="pane">
+                <textarea id="bodyInput" placeholder="ここに入力 (Ctrl+Enterで確定＆次へ)"></textarea>
+                <div class="row" style="justify-content:space-between;">
+                  <div class="small" id="charCount">0文字</div>
+                  <div class="small">※入力後に自動保存</div>
+                </div>
+              </div>
+              <div class="pane">
+                <div class="charPaneList">
+                  <div class="charGrid" id="charBtns"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="backdrop" class="panelBackdrop" aria-hidden="true"></div>
+  <aside id="panel" class="sidePanel" aria-label="settings panel">
+    <div class="panelHeader">
+      <h2>メニュー</h2>
+      <div class="row">
+        <button id="closePanelBtn" class="ghost">閉じる</button>
+      </div>
+    </div>
+    <div class="panelBody">
+      <div class="section">
+        <h3 style="margin:0 0 10px; font-size:13px; color:var(--muted)">作品データ</h3>
+        <div class="statsGrid">
+          <div class="statCard"><span class="statVal" id="statChars">0</span><span class="statLabel">総文字数</span></div>
+          <div class="statCard"><span class="statVal" id="statPages">0</span><span class="statLabel">ページ数</span></div>
+          <div class="statCard"><span class="statVal" id="statBubbles">0</span><span class="statLabel">フキダシ数</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3 style="margin:0 0 10px; font-size:13px; color:var(--muted)">テキスト書き出し</h3>
+        <p style="font-size:12px; color:var(--muted)">プロット全体をテキストとしてコピーできます。</p>
+        <button id="exportTextBtn" style="width:100%; margin-bottom:8px">テキスト生成</button>
+        <textarea id="exportOut" class="exportBox" placeholder="ここに生成されます"></textarea>
+      </div>
+
+      <div class="section">
+        <h3 style="margin:0 0 10px; font-size:13px; color:var(--muted)">キャラ登録</h3>
+        <div class="row">
+          <input id="newChar" type="text" placeholder="例：一号 / トガネ" style="width:180px" />
+          <button id="addCharBtn">追加</button>
+        </div>
+        <div style="height:10px"></div>
+        <div id="charList" class="row"></div>
+      </div>
+
+      <div class="section">
+        <button id="clearBtn" class="danger" style="width:100%">全消去（初期化）</button>
+      </div>
+    </div>
+  </aside>
+
+<script>
+(() => {
+  const STORAGE_KEY = "manga_app_v35_files"; 
+  const DEFAULT_STATE = {
+    chars: ["A","B"],
+    pages: [{ id: null, memo: "", lines: [] }], 
+    selected: { pageId: null, lineId: null }
+  };
+  
+  const LIMITS = {
+    MAX_PAGES: 200,
+    MAX_LINES_PER_PAGE: 500,
+    MAX_CHARS_LIST: 100,
+    MAX_MEMO_LEN: 200,
+    MAX_BODY_LEN: 5000,
+    MAX_HEAD_FREE: 20,
+    HISTORY_SIZE_LIMIT_CHARS: 2 * 1024 * 1024
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const toastEl = $("toast");
+
+  // --- Utility ---
+  function uid(){ 
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return Math.random().toString(36).slice(2) + Date.now().toString(36); 
+  }
+
+  function sanitizeIdMaybe(v){
+    const s = String(v ?? "");
+    if (/^[A-Za-z0-9\-\_]{6,80}$/.test(s)) return s;
+    return uid();
+  }
+  
+  function clone(obj) {
+    if (typeof structuredClone === "function") return structuredClone(obj);
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function escSel(str) {
+    if (!str) return "";
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(str);
+    return String(str).replace(/["\\#.;,[\]()=<>:+*~^$|!?{}\s]/g, "\\$&");
+  }
+
+  const debounce = (fn, ms) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
+
+  function showToast(msg="完了", isError=false){
+    if(!toastEl) return;
+    toastEl.textContent = msg;
+    if(isError) toastEl.classList.add("error");
+    else toastEl.classList.remove("error");
+    toastEl.classList.add("show");
+    setTimeout(() => toastEl.classList.remove("show"), 2000);
+  }
+
+  // --- State & Persistence ---
+  let state = loadState();
+  let historyStack = [];
+  let historyIdx = -1;
+  const MAX_HISTORY = 60;
+
+  if(state.pages.length === 0 || !state.pages[0].id) resetState();
+  pushHistory(true); 
+
+  const lazySave = debounce(() => saveState(), 800);
+  const lazyUpdateStats = debounce(() => updateStats(), 500);
+
+  // 修正4: ページ離脱時の保存補強（beforeunload削除）
+  window.addEventListener("pagehide", () => saveState());
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "hidden") saveState();
+  });
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return clone(DEFAULT_STATE);
+      const st = JSON.parse(raw);
+      if(validateAndSanitizeState(st)) {
+          return st;
+      }
+      return clone(DEFAULT_STATE);
+    }catch(e){ return clone(DEFAULT_STATE); }
+  }
+
+  let saveCooldown = false;
+  function saveState(){
+    if(saveCooldown) return;
+    try { 
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
+    } catch(e){
+      console.error("Save failed:", e);
+      showToast("保存に失敗しました", true);
+      saveCooldown = true;
+      setTimeout(() => saveCooldown = false, 3000);
+    }
+  }
+  
+  function validateAndSanitizeState(st) {
+    if (!st || typeof st !== 'object') return false;
+    
+    const seenPageIds = new Set();
+    const seenLineIds = new Set();
+
+    if (!Array.isArray(st.pages)) st.pages = [];
+    st.pages = st.pages.slice(0, LIMITS.MAX_PAGES);
+    st.pages.forEach(p => {
+        p.id = sanitizeIdMaybe(p.id);
+        while(seenPageIds.has(p.id)) p.id = uid();
+        seenPageIds.add(p.id);
+
+        p.memo = String(p.memo || "").slice(0, LIMITS.MAX_MEMO_LEN);
+        if(!Array.isArray(p.lines)) p.lines = [];
+        p.lines = p.lines.slice(0, LIMITS.MAX_LINES_PER_PAGE).map(l => {
+          const nl = normalizeLine(l);
+          nl.id = sanitizeIdMaybe(nl.id);
+          while(seenLineIds.has(nl.id)) nl.id = uid();
+          seenLineIds.add(nl.id);
+          return nl;
+        });
+    });
+    if(st.pages.length === 0) return false; 
+
+    if (!Array.isArray(st.chars)) st.chars = [];
+    st.chars = st.chars
+      .filter(c => typeof c === 'string')
+      .map(c => c.trim().slice(0, 60))
+      .filter(c => c.length > 0)
+      .slice(0, LIMITS.MAX_CHARS_LIST);
+    
+    const sel = st.selected || {pageId:null, lineId:null};
+    const page = st.pages.find(p => p.id === sel.pageId);
+    if(!page) {
+      st.selected = {pageId:null, lineId:null};
+    } else {
+      const lineOk = (page.lines || []).some(x => x.id === sel.lineId);
+      // 【修正1】ページが存在すれば lineId が無効でもページ選択(lineId:null)として維持
+      if(!lineOk) st.selected = {pageId:sel.pageId, lineId:null};
+      else st.selected = sel;
+    }
+    return true;
+  }
+
+  function resetState() {
+      state = clone(DEFAULT_STATE);
+      state.pages[0].id = uid();
+      const seed = normalizeLine({});
+      state.pages[0].lines = [seed];
+      state.selected = { pageId: state.pages[0].id, lineId: seed.id };
+  }
+
+  function normalizeLine(l){
+    return {
+      id: l.id ?? uid(),
+      headMode: l.headMode ?? "char",
+      headValue: String(l.headValue ?? "").slice(0, 60),
+      headFree: String(l.headFree ?? "").slice(0, LIMITS.MAX_HEAD_FREE),
+      body: String(l.body ?? "").slice(0, LIMITS.MAX_BODY_LEN)
+    };
+  }
+
+  function getPage(pageId){ return state.pages.find(p => p.id === pageId); }
+  function getLine(pageId, lineId){
+    const p = getPage(pageId);
+    if(!p) return null;
+    return (p.lines || []).find(x => x.id === lineId) || null;
+  }
+
+  function headLabel(line){
+    const free = (line.headFree || "").trim();
+    if(free) return free;
+    if(line.headMode === "nar") return "ナレーション";
+    if(line.headMode === "scene") return "場面転換";
+    if(line.headMode === "memo") return "メモ";
+    if(line.headMode === "char") return (line.headValue || "").trim() || "（キャラ未設定）";
+    return "（上段未設定）";
+  }
+
+  // --- History System ---
+  function pushHistory(skipSave = false){
+    if(historyIdx < historyStack.length - 1){
+      historyStack = historyStack.slice(0, historyIdx + 1);
+    }
+    const snapshot = JSON.stringify(state);
+    if(snapshot.length > LIMITS.HISTORY_SIZE_LIMIT_CHARS && historyStack.length > 0) {
+        const half = Math.floor(historyStack.length / 2);
+        historyStack = historyStack.slice(half);
+        historyIdx = historyStack.length - 1;
+    }
+    if(historyStack.length > 0 && historyStack[historyIdx] === snapshot) return;
+    historyStack.push(snapshot);
+    if(historyStack.length > MAX_HISTORY) historyStack.shift();
+    historyIdx = historyStack.length - 1;
+    updateUndoButtons();
+    if(!skipSave) saveState();
+  }
+
+  function undo(){
+    if(historyIdx > 0){
+      historyIdx--;
+      restoreFromHistory();
+    }
+  }
+
+  function redo(){
+    if(historyIdx < historyStack.length - 1){
+      historyIdx++;
+      restoreFromHistory();
+    }
+  }
+
+  function restoreFromHistory(){
+    if(historyIdx < 0 || historyIdx >= historyStack.length) return;
+    try{
+      const raw = historyStack[historyIdx];
+      if(!raw) return;
+      const restored = JSON.parse(raw);
+
+      if(!validateAndSanitizeState(restored)){
+        showToast("履歴データが破損しているため初期化しました", true);
+        resetState();
+        historyStack = [];
+        historyIdx = -1;
+        pushHistory(true);
+        renderAll();
+        saveState();
+        updateUndoButtons();
+        return;
+      }
+      state = restored;
+      renderAll();
+      saveState();
+      updateUndoButtons();
+      showToast("処理を戻しました");
+    }catch(e){ console.error(e); }
+  }
+
+  function updateUndoButtons(){
+    $("btnUndo").disabled = (historyIdx <= 0);
+    $("btnRedo").disabled = (historyIdx >= historyStack.length - 1);
+  }
+
+  function action(fn){
+    fn();
+    const ok = validateAndSanitizeState(state);
+    if(!ok){
+        showToast("状態が破損したため初期化しました", true);
+        resetState();
+        historyStack = [];
+        historyIdx = -1;
+        pushHistory(true);
+        renderAll();
+        saveState();
+        updateUndoButtons();
+        return;
+    }
+    pushHistory();
+    renderAll();
+  }
+
+  // --- Stats ---
+  function updateStats(){
+    let charCount = 0;
+    let bubbleCount = 0;
+    state.pages.forEach(p => {
+      p.lines.forEach(l => {
+        bubbleCount++;
+        charCount += (l.body || "").length;
+      });
+    });
+    $("statChars").textContent = charCount.toLocaleString();
+    $("statPages").textContent = state.pages.length;
+    $("statBubbles").textContent = bubbleCount.toLocaleString();
+  }
+
+  // --- Rendering & Delegation ---
+  function renderAll(){
+    bindPagesDelegationOnce();
+    renderCharsPanel();
+    enableCharDrag();
+    renderPages();
+    renderEditor();
+    updateStats();
+  }
+
+  let pagesDelegationBound = false;
+  function bindPagesDelegationOnce(){
+    if(pagesDelegationBound) return;
+    pagesDelegationBound = true;
+
+    const pagesRoot = $("pages");
+
+    pagesRoot.addEventListener("click", (e) => {
+      const actEl = e.target.closest("[data-act]");
+      const pageBlock = e.target.closest(".pageBlock");
+      const bubble = e.target.closest(".bubble");
+
+      if (actEl && pageBlock && !bubble) {
+        const pageId = pageBlock.dataset.pageId;
+        const pIndex = state.pages.findIndex(p => p.id === pageId);
+        const act = actEl.dataset.act;
+
+        if (act === "moveUp") return movePage(pIndex, -1);
+        if (act === "moveDown") return movePage(pIndex, 1);
+        if (act === "addLine") return addLineToPage(pageId);
+        if (act === "delPage") {
+          if (state.pages.length <= 1) return alert("ページは最低1つ必要です");
+          if (confirm(`P${pIndex + 1} を削除しますか？`)) {
+            action(() => {
+              state.pages = state.pages.filter(x => x.id !== pageId);
+              if (state.selected.pageId === pageId) state.selected = { pageId:null, lineId:null };
+            });
+          }
+          return;
+        }
+      }
+
+      if (bubble) {
+        const pageId = bubble.dataset.pageId;
+        const lineId = bubble.dataset.lineId;
+        const act = actEl?.dataset.act;
+        
+        // 修正: button化に伴うdragハンドルのクリック無視 (stopPropagation追加)
+        if (act === "drag") { e.preventDefault(); e.stopPropagation(); return; }
+
+        if (act) {
+          const p = getPage(pageId);
+          const idx = p?.lines?.findIndex(x => x.id === lineId) ?? -1;
+          if (!p || idx < 0) return;
+
+          /* 削除後 */
+          if (act === "del") {
+            let nextLineId = null;
+            action(() => {
+              // 削除実行
+              p.lines.splice(idx, 1);
+
+              if (p.lines.length === 0) {
+                 // 【修正2】0件ならページ選択状態にする（null/nullにしない）
+                 state.selected = { pageId: pageId, lineId: null };
+                 nextLineId = null;
+              } else {
+                 // 削除した位置にある新しい要素(元の次) or 末尾
+                 const nextIdx = Math.min(idx, p.lines.length - 1);
+                 state.selected = { pageId, lineId: p.lines[nextIdx].id };
+                 nextLineId = p.lines[nextIdx].id;
+              }
+            });
+
+            // 選択先へ移動＆編集継続
+            setTimeout(() => {
+              if(nextLineId) {
+                scrollToLine(nextLineId);
+                $("bodyInput")?.focus();
+              }
+            }, 50);
+
+            return;
+          }
+
+          if (act === "left") return moveLineOrder(p, idx, 1);
+          if (act === "right") return moveLineOrder(p, idx, -1);
+          return;
+        }
+        state.selected = { pageId, lineId };
+        lazySave();
+        document.querySelectorAll(".bubble.selected").forEach(b => b.classList.remove("selected"));
+        bubble.classList.add("selected");
+        renderEditor(false);
+        return; // バブリングで下のページ背景クリックが反応しないよう終了
+      }
+
+      // 【修正1 & 3 & A & B】ページ背景(bubbleBoard)またはP番号クリックでページ選択＆自動フォーカス
+      const board = e.target.closest(".bubbleBoard");
+      // 修正B: P番号(pageNum)もクリック判定に追加
+      const pageNum = e.target.closest(".pageNum");
+      if (pageBlock && (board || pageNum) && !actEl && !e.target.closest(".pageMemo")) {
+         state.selected = { pageId: pageBlock.dataset.pageId, lineId: null };
+         lazySave();
+         document.querySelectorAll(".bubble.selected").forEach(b => b.classList.remove("selected"));
+         renderEditor(false);
+         // 修正: boardがクリックされた時だけフォーカス（pageNumならフォーカスしない）
+         if(board) $("bodyInput")?.focus();
+      }
+    });
+
+    pagesRoot.addEventListener("pointerdown", (e) => {
+      const handle = e.target.closest('.handle[data-act="drag"]');
+      if (!handle) return;
+      const bubble = e.target.closest(".bubble");
+      if (!bubble) return;
+      // 修正1: handle要素を渡してキャプチャ対象にする
+      startDrag(e, bubble.dataset.pageId, bubble.dataset.lineId, handle);
+    }, { passive: false });
+
+    pagesRoot.addEventListener("input", (e) => {
+      const memo = e.target.closest(".pageMemo");
+      if (!memo) return;
+      const pageBlock = e.target.closest(".pageBlock");
+      if (!pageBlock) return;
+      const pageId = pageBlock.dataset.pageId;
+      const p = getPage(pageId);
+      if (!p) return;
+      p.memo = String(memo.value || "").slice(0, LIMITS.MAX_MEMO_LEN);
+      lazySave();
+    });
+
+    pagesRoot.addEventListener("change", (e) => {
+      const memo = e.target.closest(".pageMemo");
+      if (!memo) return;
+      pushHistory();
+    });
+  }
+
+  function renderPages(){
+    const pages = $("pages");
+    pages.innerHTML = "";
+
+    state.pages.forEach((p, pIndex) => {
+      if(!p.lines) p.lines = [];
+      const block = document.createElement("div");
+      block.className = "pageBlock";
+      
+      const isFirst = pIndex === 0;
+      const isLast = pIndex === state.pages.length - 1;
+
+      block.innerHTML = `
+        <div class="pageTop">
+          <button type="button" class="pageNum" aria-label="ページ${pIndex+1}を選択">P${pIndex+1}</button>
+          <input class="pageMemo" type="text" placeholder="ページメモ（任意）" value="" />
+          <div class="pageBtns">
+            <button class="ghost" data-act="moveUp" title="ページを上へ移動" ${isFirst ? "disabled" : ""}>↑</button>
+            <button class="ghost" data-act="moveDown" title="ページを下へ移動" ${isLast ? "disabled" : ""}>↓</button>
+            <button class="ghost" data-act="addLine">＋フキダシ</button>
+            <button class="danger" data-act="delPage">削除</button>
+          </div>
+        </div>
+        <div class="bubbleBoard" data-role="board"></div>
+      `;
+      
+      // 修正9: setAttributeで属性を明示（スクロール用セレクタとの整合性確保）
+      block.dataset.pageId = p.id; 
+      block.setAttribute("data-page-id", p.id);
+
+      const board = block.querySelector('[data-role="board"]');
+      board.dataset.pageId = p.id;
+      board.setAttribute("data-page-id", p.id);
+
+      const memoInput = block.querySelector(".pageMemo");
+      if(memoInput) memoInput.value = p.memo || "";
+
+      if(p.lines.length === 0){
+        // 修正A: 空ページのヒント文言変更
+        board.innerHTML = `<div class="hint">フキダシなし。「＋フキダシ」または 本文欄で Ctrl+Enter で追加。</div>`;
+      } else {
+        p.lines.forEach((line, lineIndex) => {
+          const isSel = (state.selected.pageId === p.id && state.selected.lineId === line.id);
+          const bub = document.createElement("div");
+          bub.className = "bubble" + (isSel ? " selected" : "");
+          bub.dataset.lineId = line.id;
+          bub.dataset.pageId = p.id;
+          bub.dataset.order = `#${lineIndex + 1}`;
+
+          // 修正2: button要素に変更してアクセシビリティ対応
+          const innerHTML = `
+            <div class="bubbleInner">
+              <div class="bubbleText">
+                <div class="inner"></div>
+              </div>
+              <div class="ctrlCol">
+                <button type="button" class="iconBtn handle" data-act="drag" aria-label="移動ドラッグ">≡</button>
+                <button type="button" class="iconBtn" data-act="left" aria-label="左のコマへ（順番は次へ）">←</button>
+                <button type="button" class="iconBtn" data-act="right" aria-label="右のコマへ（順番は前へ）">→</button>
+                <button type="button" class="iconBtn delBtn" data-act="del" aria-label="削除">×</button>
+              </div>
+            </div>
+          `;
+          bub.innerHTML = innerHTML;
+          const textEl = bub.querySelector(".inner");
+          textEl.textContent = `${headLabel(line)}\n${line.body || "本文なし"}`;
+          board.appendChild(bub);
+        });
+      }
+      pages.appendChild(block);
+    });
+  }
+
+  function movePage(index, dir){
+    const target = index + dir;
+    if(target < 0 || target >= state.pages.length) return;
+    action(() => {
+      [state.pages[index], state.pages[target]] = [state.pages[target], state.pages[index]];
+    });
+    setTimeout(() => {
+       const id = state.pages[target].id;
+       document.querySelector(`.pageBlock[data-page-id="${escSel(id)}"]`)?.scrollIntoView({behavior:"smooth", block:"nearest"});
+    }, 50);
+  }
+  
+  function moveLineOrder(pageObj, currentIndex, dir) {
+      const target = currentIndex + dir;
+      if(target < 0 || target >= pageObj.lines.length) return;
+      action(() => {
+          const lines = pageObj.lines;
+          [lines[currentIndex], lines[target]] = [lines[target], lines[currentIndex]];
+          state.selected = { pageId: pageObj.id, lineId: lines[target].id };
+      });
+  }
+
+  function renderEditor(autofocus=false){
+    const fixed = [
+      { mode:"nar", label:"ナレーション" },
+      { mode:"scene", label:"場面転換" },
+      { mode:"memo", label:"メモ" },
+    ];
+    const fixedWrap = $("headFixedBtns");
+    fixedWrap.innerHTML = "";
+    fixed.forEach(f => {
+        const b = document.createElement("button");
+        b.className = "chipBtn";
+        b.dataset.mode = f.mode;
+        b.textContent = f.label;
+        fixedWrap.appendChild(b);
+    });
+
+    const charWrap = $("charBtns");
+    charWrap.innerHTML = "";
+    state.chars.forEach(name => {
+        const b = document.createElement("button");
+        b.className = "chipBtn";
+        b.dataset.mode = "char";
+        b.dataset.name = name;
+        b.textContent = name;
+        charWrap.appendChild(b);
+    });
+
+    const sel = state.selected;
+    const line = (sel.pageId && sel.lineId) ? getLine(sel.pageId, sel.lineId) : null;
+    
+    document.querySelectorAll(".bubble").forEach(b => b.classList.remove("active-edit"));
+    if(line) {
+        const activeBub = document.querySelector(`.bubble[data-line-id="${escSel(line.id)}"]`);
+        if(activeBub) activeBub.classList.add("active-edit");
+    }
+
+    fixedWrap.querySelectorAll(".chipBtn").forEach(b => b.classList.remove("active"));
+    charWrap.querySelectorAll(".chipBtn").forEach(b => b.classList.remove("active"));
+
+    if(!line){
+      $("editorWhere").textContent = "未選択";
+      $("editorLineId").textContent = "フキダシ：—";
+      $("editorHeadPill").textContent = "上段：—";
+      $("headFree").value = ""; $("bodyInput").value = ""; $("charCount").textContent = "0文字";
+      bindHeadButtons(null);
+      
+      // ページだけ選択されている場合の表示補正
+      if(sel.pageId) {
+         const p = getPage(sel.pageId);
+         if(p) $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
+      }
+      return;
+    }
+
+    const p = getPage(sel.pageId);
+    const lineIndex = p.lines.findIndex(x => x.id === line.id);
+    
+    $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
+    $("editorLineId").textContent = `#${lineIndex+1}`;
+    $("editorHeadPill").textContent = `上段：${headLabel(line)}`;
+    $("headFree").value = line.headFree || "";
+    $("bodyInput").value = line.body || "";
+    $("charCount").textContent = `${(line.body||"").length}文字`;
+
+    if(["nar","scene","memo"].includes(line.headMode)){
+      fixedWrap.querySelector(`[data-mode="${line.headMode}"]`)?.classList.add("active");
+    }
+    if(line.headMode === "char"){
+      const t = Array.from(charWrap.querySelectorAll(".chipBtn")).find(b => b.dataset.name === line.headValue);
+      t?.classList.add("active");
+    }
+
+    bindHeadButtons(line);
+    if(autofocus) setTimeout(() => $("bodyInput").focus(), 0);
+  }
+
+  function bindHeadButtons(line){
+    $("headFixedBtns").querySelectorAll("button").forEach(b => b.onclick = () => {
+      if(!line) return;
+      action(() => { line.headMode = b.dataset.mode; line.headValue = ""; });
+    });
+    $("charBtns").querySelectorAll("button").forEach(b => b.onclick = () => {
+      if(!line) return;
+      action(() => { line.headMode = "char"; line.headValue = b.dataset.name; });
+    });
+  }
+
+  function renderCharsPanel(){
+    const wrap = $("charList");
+    wrap.innerHTML = "";
+    state.chars.forEach((name, idx) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.draggable = true;
+      chip.dataset.index = idx;
+      
+      const span = document.createElement("span");
+      span.textContent = name;
+      
+      const renameBtn = document.createElement("button");
+      renameBtn.className = "ghost";
+      renameBtn.style.color = "var(--accent)";
+      renameBtn.textContent = "✎";
+      renameBtn.title = "名前を変更（既存フキダシも置換）";
+      renameBtn.onclick = () => renameChar(idx, name);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "ghost";
+      delBtn.style.color = "var(--danger)";
+      delBtn.textContent = "×";
+      delBtn.onclick = () => action(() => state.chars.splice(idx,1));
+
+      chip.appendChild(span);
+      chip.appendChild(renameBtn);
+      chip.appendChild(delBtn);
+      wrap.appendChild(chip);
+    });
+  }
+
+  function renameChar(index, oldName){
+    const raw = prompt(`キャラクター名「${oldName}」の新しい名前を入力:`, oldName);
+    const nn = (raw || "").trim().slice(0, 60);
+    if(!nn) return;
+    if(nn === oldName) return;
+    if(state.chars.includes(nn)) return alert("その名前は既に存在します");
+
+    action(() => {
+      state.chars[index] = nn;
+      state.pages.forEach(p => {
+        p.lines.forEach(l => {
+          if(l.headMode === "char" && l.headValue === oldName){
+            l.headValue = nn;
+          }
+        });
+      });
+    });
+    showToast("名前を変更し、フキダシを更新しました");
+  }
+
+  function commitAndNext() {
+      const sel = state.selected;
+      // 【修正4】ページ選択のみでも追加許容
+      if(!sel.pageId) return;
+      if(!sel.lineId) { addLineToPage(sel.pageId); return; }
+
+      const p = getPage(sel.pageId);
+      const currentIndex = p.lines.findIndex(x => x.id === sel.lineId);
+      if(currentIndex < 0) return;
+
+      // 修正1: 上限チェック
+      if(p.lines.length >= LIMITS.MAX_LINES_PER_PAGE){
+         return showToast("このページのフキダシ上限です", true);
+      }
+
+      let newLineId;
+      action(() => {
+          const newLine = normalizeLine({});
+          p.lines.splice(currentIndex + 1, 0, newLine);
+          state.selected = { pageId: sel.pageId, lineId: newLine.id };
+          newLineId = newLine.id;
+      });
+      setTimeout(() => {
+        $("bodyInput").focus();
+        scrollToLine(newLineId);
+      }, 50);
+  }
+
+  function addLineToPage(pageId){
+    const p = getPage(pageId);
+    if(!p) return;
+    // 修正1: 上限チェック
+    if(p.lines.length >= LIMITS.MAX_LINES_PER_PAGE){
+       return showToast("このページのフキダシ上限です", true);
+    }
+
+    let newLineId;
+    action(() => {
+      const line = normalizeLine({});
+      p.lines.push(line);
+      state.selected = { pageId, lineId: line.id };
+      newLineId = line.id;
+    });
+    setTimeout(() => {
+      $("bodyInput").focus();
+      scrollToLine(newLineId);
+    }, 50);
+  }
+
+  function scrollToLine(lineId) {
+      if(!lineId) return;
+      const el = document.querySelector(`.bubble[data-line-id="${escSel(lineId)}"]`);
+      el?.scrollIntoView({behavior:"smooth", block:"nearest", inline:"nearest"});
+  }
+
+  function updateBubbleTextDOM(line) {
+      const el = document.querySelector(`.bubble[data-line-id="${escSel(line.id)}"] .inner`);
+      if(el) {
+          el.textContent = `${headLabel(line)}\n${line.body || "本文なし"}`;
+      }
+  }
+
+  // --- Event Listeners ---
+  $("saveFileBtn").addEventListener("click", () => {
+      const jsonStr = JSON.stringify(state, null, 2);
+      const blob = new Blob([jsonStr], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      const date = `${yyyy}${mm}${dd}`;
+      a.download = `manga_plot_${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("ファイルを保存しました");
+  });
+
+  $("openFileBtn").addEventListener("click", () => {
+    $("fileLoader").value = "";
+    $("fileLoader").click();
+  });
+
+  $("fileLoader").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const MAX_FILE_BYTES = 5 * 1024 * 1024;
+    if(file.size > MAX_FILE_BYTES){
+      alert("ファイルが大きすぎます（5MB以内推奨）");
+      $("fileLoader").value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (loadedEvent) => {
+      try {
+        const loaded = JSON.parse(loadedEvent.target.result);
+        const candidate = clone(loaded);
+        if(!validateAndSanitizeState(candidate)){
+          alert("ファイル形式が不正か、データが破損しています。");
+          return;
+        }
+        if(confirm("現在の作業内容を破棄して、このファイルを開きますか？")){
+          state = candidate;
+          
+          // 【修正3】読み込み時の選択復元ロジック
+          const sel = state.selected || {};
+          const p = state.pages.find(x => x.id === sel.pageId);
+          if (p) {
+             if (sel.lineId) {
+                const l = p.lines.find(x => x.id === sel.lineId);
+                if (!l) state.selected.lineId = null; 
+             }
+          } else {
+             const p0 = state.pages[0];
+             if (p0) {
+                const l0 = p0.lines[0];
+                state.selected = { pageId: p0.id, lineId: l0 ? l0.id : null };
+             } else {
+                state.selected = { pageId: null, lineId: null };
+             }
+          }
+
+          historyStack = []; historyIdx = -1;
+          pushHistory(true); 
+          renderAll();
+          showToast("ファイルを読み込みました");
+        }
+      } catch(err) {
+        alert("読み込みに失敗しました: " + err);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  $("btnUndo").addEventListener("click", undo);
+  $("btnRedo").addEventListener("click", redo);
+  
+  window.addEventListener("keydown", (e) => {
+    if(e.isComposing) return; 
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){
+      e.preventDefault();
+      if(e.shiftKey) redo(); else undo();
+    }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y"){
+      e.preventDefault(); redo();
+    }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s"){
+      e.preventDefault();
+      $("saveFileBtn")?.click();
+    }
+  });
+
+  $("bodyInput").addEventListener("keydown", (e) => {
+      if(e.isComposing) return; 
+      if((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+          e.preventDefault();
+          commitAndNext();
+      }
+  });
+
+  $("addPageBtn").addEventListener("click", () => {
+    if(state.pages.length >= LIMITS.MAX_PAGES) return alert("これ以上ページを追加できません");
+    action(() => {
+      state.pages.push({ id:uid(), memo:"", lines:[] });
+    });
+    const newId = state.pages[state.pages.length-1].id;
+    setTimeout(() => {
+       document.querySelector(`.pageBlock[data-page-id="${escSel(newId)}"]`)?.scrollIntoView({behavior:"smooth", block:"nearest"});
+    }, 50);
+  });
+
+  $("headFree").addEventListener("input", (e) => {
+    const l = getLine(state.selected.pageId, state.selected.lineId);
+    if(l){ 
+        const v = String(e.target.value || "");
+        const clipped = v.slice(0, LIMITS.MAX_HEAD_FREE);
+        l.headFree = clipped;
+        if (clipped !== v) e.target.value = clipped;
+        updateBubbleTextDOM(l); 
+        $("editorHeadPill").textContent = `上段：${headLabel(l)}`;
+        lazySave();
+    }
+  });
+  $("headFree").addEventListener("change", () => pushHistory());
+
+  $("bodyInput").addEventListener("input", (e) => {
+    const l = getLine(state.selected.pageId, state.selected.lineId);
+    if(l){
+      const v = String(e.target.value || "");
+      l.body = v.slice(0, LIMITS.MAX_BODY_LEN);
+      if (l.body !== v) e.target.value = l.body;
+      $("charCount").textContent = `${l.body.length}文字`;
+      $("editorHeadPill").textContent = `上段：${headLabel(l)}`;
+      updateBubbleTextDOM(l);
+      lazySave(); 
+      lazyUpdateStats(); 
+    }
+  });
+  $("bodyInput").addEventListener("change", () => pushHistory());
+
+  $("openPanelBtn").addEventListener("click", () => {
+    $("backdrop").classList.add("open");
+    $("panel").classList.add("open");
+  });
+  const closePanel = () => {
+    $("backdrop").classList.remove("open");
+    $("panel").classList.remove("open");
+  };
+  $("closePanelBtn").addEventListener("click", closePanel);
+  $("backdrop").addEventListener("click", closePanel);
+
+  $("exportTextBtn").addEventListener("click", () => {
+    const txt = state.pages.map((p,i) => {
+      const head = `【P${i+1}】${p.memo}\n`;
+      if(p.lines.length === 0) return head + "（フキダシなし）";
+      return head + p.lines.map((l,j) => `${j+1}.[${headLabel(l)}] ${l.body}`).join("\n");
+    }).join("\n\n");
+    $("exportOut").value = txt;
+  });
+
+  $("addCharBtn").addEventListener("click", () => {
+    const v = $("newChar").value.trim().slice(0, 60);
+    if(!v) return;
+    if(state.chars.includes(v)) return alert("その名前は既に存在します");
+    if(state.chars.length >= LIMITS.MAX_CHARS_LIST) return alert("キャラ登録上限です");
+    action(() => {
+      state.chars.push(v);
+      $("newChar").value = "";
+    });
+  });
+
+  $("clearBtn").addEventListener("click", () => {
+    if(confirm("本当に全消去しますか？")) {
+      action(() => { resetState(); });
+    }
+  });
+
+  // --- Drag & Drop (キャラ) ---
+  let dragCharIndex = null;
+  function enableCharDrag(){
+    const list = $("charList");
+    list.querySelectorAll(".chip").forEach(chip => {
+      chip.addEventListener("dragstart", (e) => {
+        dragCharIndex = Number(chip.dataset.index);
+        chip.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      chip.addEventListener("dragend", () => {
+        chip.classList.remove("dragging");
+        dragCharIndex = null;
+      });
+      chip.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+      chip.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const targetIndex = Number(chip.dataset.index);
+        if(dragCharIndex === null || dragCharIndex === targetIndex) return;
+        action(() => {
+          const moved = state.chars.splice(dragCharIndex, 1)[0];
+          state.chars.splice(targetIndex, 0, moved);
+        });
+        dragCharIndex = null;
+      });
+    });
+  }
+
+  // --- Drag & Drop (フキダシ) ---
+  let drag = null;
+  const SCROLL_ZONE = 60;
+  const SCROLL_BASE_SPEED = 14;
+
+  // 修正1: startDragにcaptureEl(handle)を受け取る引数を追加
+  function startDrag(e, fromPageId, lineId, captureEl){
+    if(e.button !== undefined && e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const line = getLine(fromPageId, lineId);
+    if(!line) return;
+    const pointerId = e.pointerId;
+    
+    // 修正1: handle要素に対してPointer Captureを実行（環境差吸収）
+    const target = captureEl || e.target;
+    try{ target.setPointerCapture(pointerId); }catch(_){}
+
+    const ghost = document.createElement("div");
+    ghost.className = "dragGhost";
+    const txt = `${headLabel(line)}\n${line.body||""}`;
+    ghost.innerHTML = `<div class="inner"></div>`;
+    ghost.querySelector(".inner").textContent = txt; 
+    document.body.appendChild(ghost);
+
+    const draggingEl = document.querySelector(`.bubble[data-page-id="${escSel(fromPageId)}"][data-line-id="${escSel(lineId)}"]`);
+    if(draggingEl) draggingEl.classList.add("dragging");
+
+    const marker = document.createElement("div");
+    marker.className = "drop-marker";
+
+    drag = { 
+        pointerId, fromPageId, lineId, ghost, draggingEl, marker,
+        captureEl: target, // 追加1: キャプチャ要素を保持
+        overPageId: null, 
+        targetEl: null, 
+        lastBoard: null,
+        clientX: e.clientX, clientY: e.clientY,
+        scrollSpeed: 0
+    };
+    
+    moveGhost(e.clientX, e.clientY);
+    
+    window.addEventListener("pointermove", onDragMove, {passive:false});
+    window.addEventListener("pointerup", onDragEnd, {passive:false});
+    window.addEventListener("pointercancel", onDragEnd, {passive:false});
+
+    requestAnimationFrame(dragLoop);
+  }
+
+  function onDragMove(e){
+    if(!drag || e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    drag.clientX = e.clientX;
+    drag.clientY = e.clientY;
+    
+    if(drag.clientY < SCROLL_ZONE) {
+        drag.scrollSpeed = -SCROLL_BASE_SPEED;
+    } else if(window.innerHeight - drag.clientY < SCROLL_ZONE) {
+        drag.scrollSpeed = SCROLL_BASE_SPEED;
+    } else {
+        drag.scrollSpeed = 0;
+    }
+
+    moveGhost(drag.clientX, drag.clientY);
+    checkDropTarget();
+  }
+
+  function dragLoop() {
+      if(!drag) return;
+      if(drag.scrollSpeed !== 0) {
+          window.scrollBy(0, drag.scrollSpeed);
+          checkDropTarget(); 
+      }
+      requestAnimationFrame(dragLoop);
+  }
+
+  function checkDropTarget() {
+      const el = document.elementFromPoint(drag.clientX, drag.clientY);
+      const board = el?.closest?.(".bubbleBoard");
+      
+      if(drag.lastBoard && drag.lastBoard !== board) {
+          if(drag.marker.parentElement === drag.lastBoard) {
+              drag.marker.remove();
+          }
+          drag.lastBoard.classList.remove("dropTarget");
+      }
+
+      if(board){
+        drag.overPageId = board.getAttribute("data-page-id");
+        drag.lastBoard = board;
+        board.classList.add("dropTarget");
+        
+        drag.targetEl = findVisualTargetElement(board, drag.lineId, drag.clientX, drag.clientY);
+        
+        if(drag.targetEl) {
+            board.insertBefore(drag.marker, drag.targetEl);
+        } else {
+            board.appendChild(drag.marker); 
+        }
+
+      } else {
+        drag.overPageId = null; drag.targetEl = null;
+        if(drag.marker.parentElement) drag.marker.remove();
+      }
+  }
+
+  function onDragEnd(e){
+    if(!drag || e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", onDragEnd);
+    window.removeEventListener("pointercancel", onDragEnd);
+    document.querySelectorAll(".bubbleBoard.dropTarget").forEach(b => b.classList.remove("dropTarget"));
+    
+    // 追加2: キャプチャ解放試行
+    try{ drag.captureEl?.releasePointerCapture(e.pointerId); }catch(_){}
+
+    drag.ghost?.remove();
+    if(drag.draggingEl) drag.draggingEl.classList.remove("dragging");
+    
+    const { fromPageId, lineId, overPageId, marker } = drag;
+    drag = null; 
+
+    if(!overPageId){
+        marker?.remove();
+        return;
+    }
+
+    const board = document.querySelector(`.bubbleBoard[data-page-id="${escSel(overPageId)}"]`);
+    if(!board){ marker?.remove(); return; }
+
+    const nodes = Array.from(board.children);
+    const ids = [];
+    let insertAt = 0;
+    let foundMarker = false;
+
+    nodes.forEach((n) => {
+      if(n === marker){
+        insertAt = ids.length; 
+        foundMarker = true;
+        return;
+      }
+      if(n.classList.contains("bubble")){
+        const id = n.dataset.lineId;
+        if(id && id !== lineId) ids.push(id);
+      }
+    });
+
+    if(!foundMarker){
+      marker?.remove();
+      return;
+    }
+
+    const samePage = (fromPageId === overPageId);
+    if(samePage){
+      const fromP = getPage(fromPageId);
+      if(fromP){
+        const expected = ids.slice();
+        expected.splice(insertAt, 0, lineId);
+        const original = fromP.lines.map(l => l.id);
+        if(original.length === expected.length &&
+           original.every((id, i) => id === expected[i])) {
+          marker?.remove();
+          return; // 完全ノーオペ
+        }
+      }
+    }
+
+    marker?.remove();
+    
+    // 修正: actionラッパーを介さず、戻り値true(成功)の時だけ履歴と描画を更新する
+    const ok = moveLineToPageAtIndex(fromPageId, lineId, overPageId, insertAt);
+    if(!ok) return;
+
+    // 修正2: ドラッグ確定時も validateAndSanitizeState を通して安全性を担保
+    const ok2 = validateAndSanitizeState(state);
+    if(!ok2){
+        showToast("状態が破損したため初期化しました", true);
+        resetState();
+        historyStack = [];
+        historyIdx = -1;
+        pushHistory(true);
+        renderAll();
+        saveState();
+        updateUndoButtons();
+        return;
+    }
+
+    // 修正7: ドラッグ確定時の描画コスト削減(renderAllを呼ばず必要箇所のみ更新)
+    pushHistory();
+    renderPages();
+    renderEditor(false);
+    updateStats();
+    // 修正8: 競合解消後のscrollToLine (state参照で安全化)
+    scrollToLine(state.selected?.lineId);
+  }
+  
+  function moveGhost(x, y){ if(drag?.ghost){ drag.ghost.style.left=(x-10)+"px"; drag.ghost.style.top=(y-20)+"px"; } }
+  
+  function findVisualTargetElement(boardEl, draggingLineId, x, y) {
+    const siblings = Array.from(boardEl.querySelectorAll(".bubble"))
+                            .filter(el => el.dataset.lineId !== draggingLineId);
+    
+    if (siblings.length === 0) return null;
+
+    const items = siblings.map(el => {
+        const r = el.getBoundingClientRect();
+        return { el, top: r.top, left: r.left, bottom: r.bottom, right: r.right };
+    });
+
+    items.sort((a, b) => {
+        if (Math.abs(a.top - b.top) > 20) {
+            return a.top - b.top; 
+        }
+        return b.left - a.left; 
+    });
+
+    for (const item of items) {
+        if (y < item.top - 10) return item.el;
+        if (y > item.bottom + 10) continue;
+
+        const itemCx = item.left + (item.right - item.left) / 2;
+        if (x > itemCx) return item.el;
+    }
+
+    return null;
+  }
+  
+  function moveLineToPageAtIndex(fromPageId, lineId, toPageId, insertIndex){
+    const from = getPage(fromPageId);
+    const to = getPage(toPageId);
+    if(!from || !to) return false;
+
+    // 修正7: 配列化保証(外部JSON破損対策)
+    if(!Array.isArray(from.lines)) from.lines = [];
+    if(!Array.isArray(to.lines)) to.lines = [];
+    
+    // 修正6: 最終関門の上限チェック（別ページ移動のみ）
+    if(fromPageId !== toPageId && to.lines.length >= LIMITS.MAX_LINES_PER_PAGE){
+      showToast("移動先のページがフキダシ上限です", true);
+      return false;
+    }
+
+    const fromIdx = from.lines.findIndex(x => x.id === lineId);
+    if(fromIdx < 0) return false;
+
+    let idx = insertIndex;
+
+    const [moved] = from.lines.splice(fromIdx, 1);
+    
+    if(idx < 0) idx = 0;
+    if(idx > to.lines.length) idx = to.lines.length;
+
+    to.lines.splice(idx, 0, moved);
+    state.selected = { pageId: toPageId, lineId: moved.id };
+    
+    // 修正8: setTimeout削除（競合回避）
+    return true;
+  }
+
+  if(state.pages.length === 0) resetState();
+  renderAll();
+})();
+</script>
+</body>
+</html>
