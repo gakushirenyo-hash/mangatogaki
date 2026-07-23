@@ -51,7 +51,7 @@
       min-height: 80vh; 
     }
     .pagesHeader{display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;}
-    .pagesColumn{display:flex; flex-direction:column; gap:12px; min-height: 200px; padding-bottom: 340px;}
+    .pagesColumn{display:flex; flex-direction:column; gap:12px; min-height: 200px; padding-bottom: min(460px, calc(35dvh + 90px));}
     .pageBlock{border:1px solid var(--line); border-radius:18px; background:var(--field); padding:10px;}
 
     .pageTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
@@ -207,7 +207,7 @@
     }
     .pane{
       border:1px solid var(--line); border-radius:16px; background:rgba(0,0,0,.10);
-      padding:10px; min-height:0; display:flex; flex-direction:column; gap:8px; height: 100%;
+      padding:10px; min-height:0; display:flex; flex-direction:column; gap:8px; height: 100%; overflow:hidden;
     }
     .charPaneList{overflow:auto; border:1px solid var(--line); border-radius:14px; background:rgba(0,0,0,.08); padding:8px; height: 100%;}
     .charGrid{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start;}
@@ -215,7 +215,7 @@
     .panelBackdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:50;}
     .panelBackdrop.open{display:block;}
     .sidePanel{
-      position:fixed; top:0; right:0; height:100%; width:min(520px, 92vw);
+      position:fixed; top:0; right:0; height:100dvh; width:min(520px, 92vw);
       background:linear-gradient(180deg,var(--panel),var(--panel2)); border-left:1px solid var(--line);
       box-shadow: var(--shadow); transform: translateX(102%); transition: transform .18s ease;
       z-index:60; display:flex; flex-direction:column;
@@ -229,6 +229,7 @@
     /* A. キャラ変更UI用 */
     .chip{display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:999px; padding:7px 10px; background:var(--card);}
     .chip button{padding:4px 8px; border:none; background:transparent;}
+    .chip button:disabled{opacity:.35; cursor:not-allowed;}
     .exportBox{width:100%; min-height:160px;}
 
     /* B. 統計ボード */
@@ -249,7 +250,12 @@
       white-space: pre-wrap; color: var(--text); font-size:16px; width: max-content; max-width:none;
     }
 
-    @media (max-width: 860px){ .split2{grid-template-columns: 1fr;} }
+    @media (max-width: 860px){
+      .split2{grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);}
+    }
+    @media (max-height: 500px){
+      .editorBody{min-height:160px;}
+    }
   </style>
 </head>
 <body>
@@ -322,7 +328,7 @@
   </div>
 
   <div id="backdrop" class="panelBackdrop" aria-hidden="true"></div>
-  <aside id="panel" class="sidePanel" aria-label="settings panel">
+  <aside id="panel" class="sidePanel" aria-label="settings panel" aria-hidden="true">
     <div class="panelHeader">
       <h2>メニュー</h2>
       <div class="row">
@@ -343,7 +349,7 @@
         <h3 style="margin:0 0 10px; font-size:13px; color:var(--muted)">テキスト書き出し</h3>
         <p style="font-size:12px; color:var(--muted)">プロット全体をテキストとしてコピーできます。</p>
         <button id="exportTextBtn" style="width:100%; margin-bottom:8px">テキスト生成</button>
-        <textarea id="exportOut" class="exportBox" placeholder="ここに生成されます"></textarea>
+        <textarea id="exportOut" class="exportBox" placeholder="ここに生成されます" readonly></textarea>
       </div>
 
       <div class="section">
@@ -366,6 +372,7 @@
 (() => {
   const STORAGE_KEY = "manga_app_v35_files"; 
   const DEFAULT_STATE = {
+    version: 1,
     chars: ["A","B"],
     pages: [{ id: null, memo: "", lines: [] }], 
     selected: { pageId: null, lineId: null }
@@ -415,13 +422,15 @@
     };
   };
 
+  let toastTimer = null;
   function showToast(msg="完了", isError=false){
     if(!toastEl) return;
     toastEl.textContent = msg;
     if(isError) toastEl.classList.add("error");
     else toastEl.classList.remove("error");
     toastEl.classList.add("show");
-    setTimeout(() => toastEl.classList.remove("show"), 2000);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2000);
   }
 
   // --- State & Persistence ---
@@ -436,29 +445,55 @@
   const lazySave = debounce(() => saveState(), 800);
   const lazyUpdateStats = debounce(() => updateStats(), 500);
 
+  // 長期運用: ブラウザに永続ストレージ化を要求（対応環境のみ）
+  if(navigator.storage?.persist) navigator.storage.persist().catch(()=>{});
+
   // 修正4: ページ離脱時の保存補強（beforeunload削除）
-  window.addEventListener("pagehide", () => saveState());
+  function forceSaveState(){
+    saveCooldown = false;
+    saveState();
+  }
+  window.addEventListener("pagehide", forceSaveState);
   document.addEventListener("visibilitychange", () => {
-    if(document.visibilityState === "hidden") saveState();
+    if(document.visibilityState === "hidden") forceSaveState();
   });
 
   function loadState(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return clone(DEFAULT_STATE);
-      const st = JSON.parse(raw);
-      if(validateAndSanitizeState(st)) {
-          return st;
+    for(const key of [STORAGE_KEY, STORAGE_KEY + "_bak"]){
+      try{
+        const raw = localStorage.getItem(key);
+        if(!raw) continue;
+        const st = JSON.parse(raw);
+        if(validateAndSanitizeState(st)) return st;
+      }catch(e){
+        console.warn("Load failed:", key, e);
       }
-      return clone(DEFAULT_STATE);
-    }catch(e){ return clone(DEFAULT_STATE); }
+    }
+    return clone(DEFAULT_STATE);
   }
 
   let saveCooldown = false;
+
+  function createDailyBackup(){
+    try{
+      const today = new Date().toISOString().slice(0, 10);
+      if(localStorage.getItem(STORAGE_KEY + "_bakDate") !== today){
+        const prev = localStorage.getItem(STORAGE_KEY);
+        if(prev){
+          localStorage.setItem(STORAGE_KEY + "_bak", prev);
+          localStorage.setItem(STORAGE_KEY + "_bakDate", today);
+        }
+      }
+    }catch(e){
+      console.warn("Backup failed:", e);
+    }
+  }
+
   function saveState(){
     if(saveCooldown) return;
-    try { 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
+    try {
+      createDailyBackup();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch(e){
       console.error("Save failed:", e);
       showToast("保存に失敗しました", true);
@@ -469,12 +504,15 @@
   
   function validateAndSanitizeState(st) {
     if (!st || typeof st !== 'object') return false;
+    st.version = Number(st.version) || 1;
     
     const seenPageIds = new Set();
     const seenLineIds = new Set();
 
     if (!Array.isArray(st.pages)) st.pages = [];
-    st.pages = st.pages.slice(0, LIMITS.MAX_PAGES);
+    st.pages = st.pages
+      .filter(p => p && typeof p === "object")
+      .slice(0, LIMITS.MAX_PAGES);
     st.pages.forEach(p => {
         p.id = sanitizeIdMaybe(p.id);
         while(seenPageIds.has(p.id)) p.id = uid();
@@ -521,6 +559,7 @@
   }
 
   function normalizeLine(l){
+    if(!l || typeof l !== "object") l = {};
     return {
       id: l.id ?? uid(),
       headMode: l.headMode ?? "char",
@@ -569,18 +608,18 @@
   function undo(){
     if(historyIdx > 0){
       historyIdx--;
-      restoreFromHistory();
+      restoreFromHistory("処理を戻しました");
     }
   }
 
   function redo(){
     if(historyIdx < historyStack.length - 1){
       historyIdx++;
-      restoreFromHistory();
+      restoreFromHistory("処理をやり直しました");
     }
   }
 
-  function restoreFromHistory(){
+  function restoreFromHistory(message="処理を戻しました"){
     if(historyIdx < 0 || historyIdx >= historyStack.length) return;
     try{
       const raw = historyStack[historyIdx];
@@ -602,7 +641,7 @@
       renderAll();
       saveState();
       updateUndoButtons();
-      showToast("処理を戻しました");
+      showToast(message);
     }catch(e){ console.error(e); }
   }
 
@@ -683,7 +722,10 @@
           if (confirm(`P${pIndex + 1} を削除しますか？`)) {
             action(() => {
               state.pages = state.pages.filter(x => x.id !== pageId);
-              if (state.selected.pageId === pageId) state.selected = { pageId:null, lineId:null };
+              if (state.selected.pageId === pageId) {
+                const nextPage = state.pages[Math.min(pIndex, state.pages.length - 1)];
+                state.selected = { pageId: nextPage ? nextPage.id : null, lineId: null };
+              }
             });
           }
           return;
@@ -889,25 +931,30 @@
       { mode:"memo", label:"メモ" },
     ];
     const fixedWrap = $("headFixedBtns");
-    fixedWrap.innerHTML = "";
-    fixed.forEach(f => {
-        const b = document.createElement("button");
-        b.className = "chipBtn";
-        b.dataset.mode = f.mode;
-        b.textContent = f.label;
-        fixedWrap.appendChild(b);
-    });
+    if(fixedWrap.children.length === 0){
+      fixed.forEach(f => {
+          const b = document.createElement("button");
+          b.className = "chipBtn";
+          b.dataset.mode = f.mode;
+          b.textContent = f.label;
+          fixedWrap.appendChild(b);
+      });
+    }
 
     const charWrap = $("charBtns");
-    charWrap.innerHTML = "";
-    state.chars.forEach(name => {
-        const b = document.createElement("button");
-        b.className = "chipBtn";
-        b.dataset.mode = "char";
-        b.dataset.name = name;
-        b.textContent = name;
-        charWrap.appendChild(b);
-    });
+    const charSig = JSON.stringify(state.chars);
+    if(charWrap.dataset.sig !== charSig){
+      charWrap.dataset.sig = charSig;
+      charWrap.innerHTML = "";
+      state.chars.forEach(name => {
+          const b = document.createElement("button");
+          b.className = "chipBtn";
+          b.dataset.mode = "char";
+          b.dataset.name = name;
+          b.textContent = name;
+          charWrap.appendChild(b);
+      });
+    }
 
     const sel = state.selected;
     const line = (sel.pageId && sel.lineId) ? getLine(sel.pageId, sel.lineId) : null;
@@ -925,13 +972,21 @@
       $("editorWhere").textContent = "未選択";
       $("editorLineId").textContent = "フキダシ：—";
       $("editorHeadPill").textContent = "上段：—";
-      $("headFree").value = ""; $("bodyInput").value = ""; $("charCount").textContent = "0文字";
+      $("headFree").value = "";
+      $("headFree").disabled = true;
+      $("bodyInput").value = "";
+      $("bodyInput").disabled = !sel.pageId;
+      $("charCount").textContent = "0文字";
       bindHeadButtons(null);
       
       // ページだけ選択されている場合の表示補正
       if(sel.pageId) {
          const p = getPage(sel.pageId);
-         if(p) $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
+         if(p) {
+           $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
+           $("editorLineId").textContent = "フキダシ：新規";
+           $("editorHeadPill").textContent = "上段：新規作成後に設定";
+         }
       }
       return;
     }
@@ -942,6 +997,8 @@
     $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
     $("editorLineId").textContent = `#${lineIndex+1}`;
     $("editorHeadPill").textContent = `上段：${headLabel(line)}`;
+    $("headFree").disabled = false;
+    $("bodyInput").disabled = false;
     $("headFree").value = line.headFree || "";
     $("bodyInput").value = line.body || "";
     $("charCount").textContent = `${(line.body||"").length}文字`;
@@ -959,13 +1016,20 @@
   }
 
   function bindHeadButtons(line){
-    $("headFixedBtns").querySelectorAll("button").forEach(b => b.onclick = () => {
-      if(!line) return;
-      action(() => { line.headMode = b.dataset.mode; line.headValue = ""; });
+    const disabled = !line;
+    $("headFixedBtns").querySelectorAll("button").forEach(b => {
+      b.disabled = disabled;
+      b.onclick = () => {
+        if(!line || b.disabled) return;
+        action(() => { line.headMode = b.dataset.mode; line.headValue = ""; });
+      };
     });
-    $("charBtns").querySelectorAll("button").forEach(b => b.onclick = () => {
-      if(!line) return;
-      action(() => { line.headMode = "char"; line.headValue = b.dataset.name; });
+    $("charBtns").querySelectorAll("button").forEach(b => {
+      b.disabled = disabled;
+      b.onclick = () => {
+        if(!line || b.disabled) return;
+        action(() => { line.headMode = "char"; line.headValue = b.dataset.name; });
+      };
     });
   }
 
@@ -981,6 +1045,20 @@
       const span = document.createElement("span");
       span.textContent = name;
       
+      const movePrevBtn = document.createElement("button");
+      movePrevBtn.className = "ghost";
+      movePrevBtn.textContent = "↑";
+      movePrevBtn.title = "1つ前へ移動";
+      movePrevBtn.disabled = idx === 0;
+      movePrevBtn.onclick = () => moveChar(idx, -1);
+
+      const moveNextBtn = document.createElement("button");
+      moveNextBtn.className = "ghost";
+      moveNextBtn.textContent = "↓";
+      moveNextBtn.title = "1つ後へ移動";
+      moveNextBtn.disabled = idx === state.chars.length - 1;
+      moveNextBtn.onclick = () => moveChar(idx, 1);
+
       const renameBtn = document.createElement("button");
       renameBtn.className = "ghost";
       renameBtn.style.color = "var(--accent)";
@@ -995,9 +1073,20 @@
       delBtn.onclick = () => action(() => state.chars.splice(idx,1));
 
       chip.appendChild(span);
+      chip.appendChild(movePrevBtn);
+      chip.appendChild(moveNextBtn);
       chip.appendChild(renameBtn);
       chip.appendChild(delBtn);
       wrap.appendChild(chip);
+    });
+  }
+
+  function moveChar(index, dir){
+    const target = index + dir;
+    if(target < 0 || target >= state.chars.length) return;
+    action(() => {
+      const [moved] = state.chars.splice(index, 1);
+      state.chars.splice(target, 0, moved);
     });
   }
 
@@ -1023,9 +1112,28 @@
 
   function commitAndNext() {
       const sel = state.selected;
-      // 【修正4】ページ選択のみでも追加許容
+      // ページ選択のみの場合は、本文欄の入力を引き継いで新規フキダシ化
       if(!sel.pageId) return;
-      if(!sel.lineId) { addLineToPage(sel.pageId); return; }
+      if(!sel.lineId) {
+        const p0 = getPage(sel.pageId);
+        if(!p0) return;
+        if(p0.lines.length >= LIMITS.MAX_LINES_PER_PAGE){
+           return showToast("このページのフキダシ上限です", true);
+        }
+        const pending = String($("bodyInput")?.value || "").slice(0, LIMITS.MAX_BODY_LEN);
+        let newLineId;
+        action(() => {
+          const line = normalizeLine({ body: pending });
+          p0.lines.push(line);
+          state.selected = { pageId: sel.pageId, lineId: line.id };
+          newLineId = line.id;
+        });
+        setTimeout(() => {
+          $("bodyInput")?.focus();
+          scrollToLine(newLineId);
+        }, 50);
+        return;
+      }
 
       const p = getPage(sel.pageId);
       const currentIndex = p.lines.findIndex(x => x.id === sel.lineId);
@@ -1094,7 +1202,9 @@
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth()+1).padStart(2,"0");
       const dd = String(d.getDate()).padStart(2,"0");
-      const date = `${yyyy}${mm}${dd}`;
+      const hh = String(d.getHours()).padStart(2,"0");
+      const mi = String(d.getMinutes()).padStart(2,"0");
+      const date = `${yyyy}${mm}${dd}_${hh}${mi}`;
       a.download = `manga_plot_${date}.json`;
       document.body.appendChild(a);
       a.click();
@@ -1167,13 +1277,22 @@
   $("btnRedo2")?.addEventListener("click", () => $("btnRedo")?.click());
   $("addPageBtn2")?.addEventListener("click", () => $("addPageBtn")?.click());
   
+  function shouldUseNativeTextUndo(el){
+    return !!(el && (el.id === "exportOut" || el.id === "newChar" || el.classList?.contains("pageMemo")));
+  }
+
   window.addEventListener("keydown", (e) => {
-    if(e.isComposing) return; 
+    if(e.isComposing) return;
+    if(drag) return;
     if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){
+      const ae = document.activeElement;
+      if(shouldUseNativeTextUndo(ae)) return;
+      if(ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) pushHistory();
       e.preventDefault();
       if(e.shiftKey) redo(); else undo();
     }
     if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y"){
+      if(shouldUseNativeTextUndo(document.activeElement)) return;
       e.preventDefault(); redo();
     }
     if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s"){
@@ -1216,7 +1335,39 @@
   $("headFree").addEventListener("change", () => pushHistory());
 
   $("bodyInput").addEventListener("input", (e) => {
-    const l = getLine(state.selected.pageId, state.selected.lineId);
+    let l = getLine(state.selected.pageId, state.selected.lineId);
+
+    // ページだけ選択した状態で本文入力した場合は、黙って捨てずに新規フキダシとして保存する
+    if(!l && state.selected.pageId){
+      const p = getPage(state.selected.pageId);
+      if(!p) return;
+      const v = String(e.target.value || "");
+      const clipped = v.slice(0, LIMITS.MAX_BODY_LEN);
+      if (clipped !== v) e.target.value = clipped;
+      $("charCount").textContent = `${clipped.length}文字`;
+      if(!clipped) return;
+      if(p.lines.length >= LIMITS.MAX_LINES_PER_PAGE){
+        e.target.value = "";
+        $("charCount").textContent = "0文字";
+        return showToast("このページのフキダシ上限です", true);
+      }
+
+      l = normalizeLine({ body: clipped });
+      p.lines.push(l);
+      state.selected = { pageId: p.id, lineId: l.id };
+
+      renderPages();
+      const lineIndex = p.lines.findIndex(x => x.id === l.id);
+      $("editorWhere").textContent = `P${state.pages.indexOf(p)+1}`;
+      $("editorLineId").textContent = `#${lineIndex+1}`;
+      $("editorHeadPill").textContent = `上段：${headLabel(l)}`;
+      $("headFree").disabled = false;
+      $("bodyInput").disabled = false;
+      lazySave();
+      lazyUpdateStats();
+      return;
+    }
+
     if(l){
       const v = String(e.target.value || "");
       l.body = v.slice(0, LIMITS.MAX_BODY_LEN);
@@ -1232,14 +1383,31 @@
 
   $("openPanelBtn").addEventListener("click", () => {
     $("backdrop").classList.add("open");
+    $("backdrop").setAttribute("aria-hidden", "false");
     $("panel").classList.add("open");
+    $("panel").setAttribute("aria-hidden", "false");
   });
   const closePanel = () => {
     $("backdrop").classList.remove("open");
+    $("backdrop").setAttribute("aria-hidden", "true");
     $("panel").classList.remove("open");
+    $("panel").setAttribute("aria-hidden", "true");
   };
   $("closePanelBtn").addEventListener("click", closePanel);
   $("backdrop").addEventListener("click", closePanel);
+  window.addEventListener("keydown", (e) => {
+    if(e.isComposing) return;
+    if(e.key !== "Escape") return;
+    if(drag){
+      e.preventDefault();
+      cancelBubbleDrag();
+      return;
+    }
+    if($("panel")?.classList.contains("open")){
+      e.preventDefault();
+      closePanel();
+    }
+  });
 
   $("exportTextBtn").addEventListener("click", () => {
     const txt = state.pages.map((p,i) => {
@@ -1297,6 +1465,7 @@
 
   // --- Drag & Drop (フキダシ) ---
   let drag = null;
+  let dragSession = 0;
   const SCROLL_ZONE = 60;
   const SCROLL_BASE_SPEED = 14;
 
@@ -1325,8 +1494,9 @@
     const marker = document.createElement("div");
     marker.className = "drop-marker";
 
+    const session = ++dragSession;
     drag = { 
-        pointerId, fromPageId, lineId, ghost, draggingEl, marker,
+        session, pointerId, fromPageId, lineId, ghost, draggingEl, marker,
         captureEl: target, // 追加1: キャプチャ要素を保持
         overPageId: null, 
         targetEl: null, 
@@ -1341,7 +1511,7 @@
     window.addEventListener("pointerup", onDragEnd, {passive:false});
     window.addEventListener("pointercancel", onDragEnd, {passive:false});
 
-    requestAnimationFrame(dragLoop);
+    requestAnimationFrame(() => dragLoop(session));
   }
 
   function onDragMove(e){
@@ -1362,16 +1532,17 @@
     checkDropTarget();
   }
 
-  function dragLoop() {
-      if(!drag) return;
+  function dragLoop(session) {
+      if(!drag || drag.session !== session) return;
       if(drag.scrollSpeed !== 0) {
           window.scrollBy(0, drag.scrollSpeed);
           checkDropTarget(); 
       }
-      requestAnimationFrame(dragLoop);
+      requestAnimationFrame(() => dragLoop(session));
   }
 
   function checkDropTarget() {
+      if(!drag) return;
       const el = document.elementFromPoint(drag.clientX, drag.clientY);
       const board = el?.closest?.(".bubbleBoard");
       
@@ -1401,21 +1572,32 @@
       }
   }
 
-  function onDragEnd(e){
-    if(!drag || e.pointerId !== drag.pointerId) return;
-    e.preventDefault();
+  function teardownDrag(d, pointerId, removeMarker=false){
+    if(!d) return;
     window.removeEventListener("pointermove", onDragMove);
     window.removeEventListener("pointerup", onDragEnd);
     window.removeEventListener("pointercancel", onDragEnd);
     document.querySelectorAll(".bubbleBoard.dropTarget").forEach(b => b.classList.remove("dropTarget"));
-    
-    // 追加2: キャプチャ解放試行
-    try{ drag.captureEl?.releasePointerCapture(e.pointerId); }catch(_){}
+    try{ d.captureEl?.releasePointerCapture(pointerId ?? d.pointerId); }catch(_){}
+    if(removeMarker) d.marker?.remove();
+    d.ghost?.remove();
+    if(d.draggingEl) d.draggingEl.classList.remove("dragging");
+  }
 
-    drag.ghost?.remove();
-    if(drag.draggingEl) drag.draggingEl.classList.remove("dragging");
+  function cancelBubbleDrag(){
+    if(!drag) return;
+    const d = drag;
+    teardownDrag(d, d.pointerId, true);
+    drag = null;
+  }
+
+  function onDragEnd(e){
+    if(!drag || e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    const d = drag;
+    teardownDrag(d, e.pointerId, false);
     
-    const { fromPageId, lineId, overPageId, marker } = drag;
+    const { fromPageId, lineId, overPageId, marker } = d;
     drag = null; 
 
     if(!overPageId){
